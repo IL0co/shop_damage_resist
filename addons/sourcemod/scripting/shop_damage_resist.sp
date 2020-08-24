@@ -11,14 +11,13 @@ public Plugin myinfo =
 	name		= "[SHOP] Damage Resist",
 	author	  	= "iLoco",
 	description = "",
-	version	 	= "1.0.1",
+	version	 	= "1.0.2",
 	url			= "iLoco#7631"
 };
 
+KeyValues iKv[MAXPLAYERS+1];
+
 ConVar cvar_Enable;
-
-ArrayList iArray[MAXPLAYERS+1], iArrayDamage[MAXPLAYERS+1];
-
 KeyValues kv;
 char gFilePath[256];
 
@@ -49,10 +48,8 @@ public void Event_OnDisconnect(Event event, const char[] name, bool DontBroadCas
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 
-	if(iArray[client])
-		delete iArray[client];
-	if(iArrayDamage[client])
-		delete iArrayDamage[client];
+	if(iKv[client])
+		delete iKv[client];
 }
 
 public Action CMD_Reload(int client, int args)
@@ -96,34 +93,41 @@ public void OnClientPostAdminCheck(int client)
 	if(IsFakeClient(client))
 		return;
 
-	iArray[client] = new ArrayList(64);
-	iArrayDamage[client] = new ArrayList(64);
+	iKv[client] = new KeyValues("cfg");
 
 	SDKHook(client, SDKHook_OnTakeDamage, Hook_OnTakeDamage);
 }
 
 public Action Hook_OnTakeDamage(int client, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
-	static int length, resist, type;
+	static int resist;
+	static char offset[64];
 	bool changed;
 
-	if(!(length = iArray[client].Length))
-		return Plugin_Continue;
-
-	for(int p; p < length; p++)	if((type = iArray[client].Get(p)) & damagetype || type == 0)
+	iKv[client].Rewind();
+	if(iKv[client].GotoFirstSubKey(false))
 	{
-		resist = iArrayDamage[client].Get(p);
+		do
+		{
+			kv.GetSectionName(offset, sizeof(offset));
 
-		if(resist != 100)
-			damage = damage / (100 / resist);
-		else
-			damage = 0.0;
+			if(StringToInt(offset) & damagetype)
+			{
+				resist = iKv[client].GetNum(NULL_STRING);
 
-		if(damage < 0.0)
-			damage = 0.0;
+				if(resist != 100)
+					damage = damage / (100 / resist);
+				else
+					damage = 0.0;
 
-		changed = true;
-	}
+				if(damage < 0.0)
+					damage = 0.0;
+
+				changed = true;
+			}
+		}
+		while(iKv[client].GotoNextKey(false));
+	}	
 	
 	if(changed)
 		return Plugin_Changed;
@@ -178,22 +182,23 @@ public void Shop_Started()
 
 public ShopAction CallBack_Shop_OnItemToggled(int client, CategoryId category_id, const char[] category, ItemId item_id, const char[] item, bool isOn, bool elapsed)
 {
-	if(!JumpToAbility(category, item))
+	if(!(JumpToAbility(category, item) && kv.JumpToKey("Protection") && kv.GotoFirstSubKey(false)))
 		return Shop_UseOff;
 
-	if(!isOn)
+	char offset[64];
+
+	iKv[client].Rewind();
+	do
 	{
-		iArray[client].Push(kv.GetNum("offset"));
-		iArrayDamage[client].Push(kv.GetNum("damage"));
+		kv.GetSectionName(offset, sizeof(offset));
+		
+		if(!isOn)
+			iKv[client].SetNum(offset, iKv[client].GetNum(offset) + kv.GetNum(NULL_STRING));
+		else 
+			iKv[client].SetNum(offset, iKv[client].GetNum(offset) - kv.GetNum(NULL_STRING));
 	}
-	else
-	{
-		for(int p; p < iArray[client].Length; p++)	if(iArray[client].Get(p) == kv.GetNum("offset") && iArrayDamage[client].Get(p) == kv.GetNum("damage"))
-		{
-			iArray[client].Erase(p);
-			iArrayDamage[client].Erase(p);
-		}
-	}
+	while(kv.GotoNextKey(false));
+	
 
 	if (isOn || elapsed)
 		return Shop_UseOff;
