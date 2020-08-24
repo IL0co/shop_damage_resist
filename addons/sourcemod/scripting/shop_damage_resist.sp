@@ -8,7 +8,7 @@
 
 public Plugin myinfo =
 {
-	name		= "[SHOP] No Fall Damage",
+	name		= "[SHOP] Damage Resist",
 	author	  	= "iLoco",
 	description = "",
 	version	 	= "1.0.1",
